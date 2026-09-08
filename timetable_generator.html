@@ -1,0 +1,1399 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>塾 時間割 自動作成ツール</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  :root{
+    --board:#22392c;
+    --board-dark:#1a2e22;
+    --chalk:#f6f2e7;
+    --chalk-dim:#d8d2c0;
+    --paper:#fbf9f3;
+    --paper-line:#e4ddc9;
+    --ink:#2a2620;
+    --gold:#e0b04a;
+    --gold-dark:#b98a2c;
+    --alert:#b6473f;
+    --alert-bg:#f7e6e2;
+    --ok:#3f7a57;
+    --room-fill:#eef3ec;
+    --group:#5b7fa6;
+    --d-school:#8a4b6b;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    font-family:"Hiragino Sans","Noto Sans JP","Yu Gothic",sans-serif;
+    background:var(--paper);
+    color:var(--ink);
+    line-height:1.6;
+  }
+  header{
+    background:linear-gradient(180deg,var(--board) 0%,var(--board-dark) 100%);
+    color:var(--chalk);
+    padding:38px 24px 26px;
+    text-align:center;
+    border-bottom:6px solid var(--gold);
+  }
+  header h1{ margin:0 0 8px; font-size:1.9rem; letter-spacing:.02em; font-weight:800; }
+  header p{ margin:0 0 20px; color:var(--chalk-dim); font-size:.95rem; }
+
+  .mode-switch{
+    display:inline-flex;
+    background:rgba(255,255,255,.08);
+    border:1px solid rgba(255,255,255,.25);
+    border-radius:30px;
+    padding:4px;
+  }
+  .mode-switch button{
+    border:none;
+    background:transparent;
+    color:var(--chalk-dim);
+    font-weight:700;
+    font-size:.85rem;
+    padding:9px 20px;
+    border-radius:24px;
+    cursor:pointer;
+  }
+  .mode-switch button.active{ background:var(--gold); color:var(--board-dark); }
+
+  .app{ max-width:1120px; margin:0 auto; padding:28px 20px 60px; }
+
+  .mode-banner{ text-align:center; font-size:.85rem; color:var(--gold-dark); font-weight:700; margin-bottom:18px; }
+
+  details.help-panel{
+    background:#fff; border:1px solid var(--paper-line); border-radius:4px;
+    padding:16px 20px; margin-bottom:24px; position:relative;
+  }
+  details.help-panel::before{
+    content:""; position:absolute; top:0; left:20px; right:20px; height:4px;
+    background:var(--gold); border-radius:0 0 3px 3px;
+  }
+  details.help-panel summary{
+    cursor:pointer; font-weight:800; font-size:1.05rem; color:var(--board); padding:4px 0;
+    list-style:revert;
+  }
+  details.help-panel[open] summary{ margin-bottom:12px; }
+  .help-panel h4{ font-size:.92rem; color:var(--board-dark); margin:16px 0 6px; }
+  .help-panel h4:first-of-type{ margin-top:0; }
+  .help-panel ul, .help-panel ol{ margin:0 0 4px; padding-left:22px; font-size:.85rem; color:#4a4536; }
+  .help-panel li{ margin-bottom:4px; }
+  .help-panel p{ font-size:.85rem; color:#4a4536; margin:4px 0; }
+  .help-panel .swatch{ vertical-align:middle; margin-right:4px; }
+
+  .panel{
+    background:#fff;
+    border:1px solid var(--paper-line);
+    border-radius:4px;
+    padding:20px 20px 18px;
+    position:relative;
+    margin-bottom:22px;
+  }
+  .panel::before{
+    content:"";
+    position:absolute;
+    top:0;left:20px;right:20px;
+    height:4px;
+    background:var(--gold);
+    border-radius:0 0 3px 3px;
+  }
+  .panel h2{ margin:6px 0 4px; font-size:1.15rem; font-weight:800; color:var(--board); }
+  .panel .cols-hint{ font-size:.8rem; color:#7a7563; margin:0 0 14px; }
+  .panel .cols-hint b{color:var(--ink);}
+
+  input[type=file]{ display:block; width:100%; font-size:.85rem; padding:8px 0; }
+
+  .edit-banner{
+    display:none;
+    background:#fff7e6;
+    border:1px solid var(--gold);
+    border-radius:4px;
+    padding:10px 14px;
+    font-size:.85rem;
+    color:var(--gold-dark);
+    font-weight:700;
+    margin-top:14px;
+  }
+  .edit-banner a{ color:var(--alert); font-weight:700; margin-left:10px; cursor:pointer; text-decoration:underline; }
+
+  .form-grid{
+    display:grid;
+    grid-template-columns:1fr 1fr 1fr;
+    gap:18px 24px;
+    margin-top:16px;
+  }
+  @media(max-width:820px){ .form-grid{grid-template-columns:1fr 1fr;} }
+  @media(max-width:520px){ .form-grid{grid-template-columns:1fr;} }
+  .field label.field-title{
+    display:block; font-size:.8rem; font-weight:700; color:var(--board); margin-bottom:6px;
+  }
+  .field select, .field input[type=text]{
+    width:100%; padding:8px 10px; border:1px solid var(--paper-line); border-radius:3px;
+    font-size:.9rem; background:#fffefb;
+  }
+
+  .matrix-wrap{ overflow-x:auto; margin-top:14px; border:1px solid var(--paper-line); border-radius:4px; }
+  table.avail-matrix{ border-collapse:collapse; width:100%; font-size:.78rem; }
+  table.avail-matrix th, table.avail-matrix td{
+    border:1px solid var(--paper-line); padding:6px 8px; text-align:center; white-space:nowrap;
+  }
+  table.avail-matrix th{ background:var(--room-fill); color:var(--board); font-weight:700; }
+  table.avail-matrix th.day-head{ background:var(--board); color:var(--chalk); }
+  table.avail-matrix td.day-cell{ background:var(--room-fill); font-weight:700; color:var(--board); text-align:left; }
+  table.avail-matrix input{ cursor:pointer; transform:scale(1.1); }
+  .matrix-row-toggle{ font-size:.68rem; color:var(--gold-dark); cursor:pointer; margin-left:6px; text-decoration:underline; }
+
+  .btn{
+    display:inline-block; border:none; cursor:pointer; font-weight:700;
+    font-size:.85rem; padding:9px 18px; border-radius:3px;
+    background:var(--board); color:var(--chalk); margin-top:10px;
+  }
+  .btn:hover{background:var(--board-dark);}
+  .btn.gold{background:var(--gold);color:var(--board-dark);}
+  .btn.gold:hover{background:var(--gold-dark);color:var(--chalk);}
+  .btn.ghost{ background:transparent; color:var(--board); border:1px solid var(--board); }
+  .btn.small{ padding:4px 10px; font-size:.75rem; margin:0; }
+
+  .checkbox-group{ display:flex; flex-wrap:wrap; gap:8px 14px; }
+  .checkbox-group label{
+    font-size:.85rem; display:flex; align-items:center; gap:5px;
+    background:var(--room-fill); padding:4px 10px; border-radius:20px; cursor:pointer;
+  }
+  .checkbox-group input{ cursor:pointer; }
+
+  #peopleSearch{
+    width:100%; padding:9px 12px; border:1px solid var(--paper-line); border-radius:3px;
+    font-size:.88rem; background:#fffefb; margin-bottom:16px;
+  }
+  .roster-subhead{
+    font-size:.95rem; color:var(--board); margin:22px 0 8px; padding-top:14px;
+    border-top:1px dashed var(--paper-line);
+  }
+  details.student-group{
+    border:1px solid var(--paper-line); border-radius:4px; margin-bottom:10px; padding:8px 14px;
+    background:#fffefb;
+  }
+  details.student-group summary{
+    cursor:pointer; font-weight:800; color:var(--board); padding:6px 0; list-style:revert;
+  }
+  details.student-group[open] summary{ margin-bottom:8px; }
+  .empty-row{ font-size:.8rem; color:#a39c88; padding:6px 0; }
+  .people-table-wrap{ margin-top:18px; overflow-x:auto; }
+  table.people-table{ width:100%; border-collapse:collapse; font-size:.78rem; }
+  table.people-table th, table.people-table td{
+    text-align:left; padding:6px 8px; border-bottom:1px solid #f0ece0; white-space:nowrap;
+  }
+  table.people-table th{ color:#7a7563; font-weight:700; }
+  .name-link{
+    color:var(--board); font-weight:700; cursor:pointer; text-decoration:underline dotted;
+  }
+  .name-link:hover{ color:var(--gold-dark); }
+  .role-tag{ display:inline-block; font-size:.72rem; font-weight:700; padding:2px 8px; border-radius:20px; }
+  .role-tag.teacher{ background:#e3ecf5; color:#2c5282; }
+  .role-tag.student{ background:#f5e9e3; color:#a15b2c; }
+  .type-tag{ display:inline-block; font-size:.72rem; font-weight:700; padding:2px 8px; border-radius:20px; }
+  .type-tag.individual{ background:#f0ece0; color:#7a5c1e; }
+  .type-tag.group{ background:#e2eaf3; color:#2c5282; }
+  .school-tag{ display:inline-block; font-size:.72rem; font-weight:700; padding:2px 8px; border-radius:20px; background:#eee; color:#555; }
+  .school-tag.D{ background:#f3e6ee; color:var(--d-school); }
+
+  .count-tag{
+    display:inline-block; font-size:.75rem; background:var(--room-fill); color:var(--board);
+    padding:2px 9px; border-radius:20px; margin-left:8px; font-weight:700;
+  }
+  .actions{ display:flex; gap:12px; justify-content:center; flex-wrap:wrap; margin:8px 0 34px; }
+
+  #resultSection{display:none;}
+  #resultSection h2{ font-size:1.3rem; color:var(--board); border-left:6px solid var(--gold); padding-left:12px; }
+  .day-block{ margin-bottom:34px; }
+  .day-block h3{
+    font-size:1.05rem; color:var(--board-dark); margin:0 0 10px;
+    display:inline-block; border-bottom:3px solid var(--gold); padding-bottom:2px;
+  }
+  .table-wrap{ overflow-x:auto; border:1px solid var(--paper-line); border-radius:4px; background:#fff; }
+  table.result-table{ border-collapse:collapse; width:100%; min-width:960px; font-size:.78rem; }
+  table.result-table th{
+    background:var(--board); color:var(--chalk); padding:10px 6px; font-weight:700; position:sticky; top:0;
+  }
+  table.result-table td{
+    border:1px solid var(--paper-line); padding:6px; text-align:center; min-width:100px; vertical-align:middle;
+  }
+  table.result-table td.slot-label{ background:var(--room-fill); font-weight:700; color:var(--board); white-space:nowrap; }
+  table.result-table td.filled{ background:#fffdf6; }
+  table.result-table td.filled.group{ background:#eef2f8; }
+  table.result-table td.pending{ background:#fdeecb; border:2px dashed #d98c1f; }
+  .cell-student{ font-weight:700; color:var(--ink); display:block; }
+  .cell-teacher{ display:block; font-size:.68rem; color:var(--gold-dark); margin-top:3px; }
+  .cell-meta{ display:block; font-size:.65rem; color:#7a7563; margin-top:2px; }
+  .cell-badge{
+    display:inline-block; font-size:.6rem; font-weight:700; padding:1px 6px; border-radius:10px;
+    margin-top:3px; background:var(--group); color:#fff;
+  }
+  .pending-label{ display:block; font-size:.65rem; font-weight:800; color:#8a5a00; margin-bottom:3px; }
+  .pending-choices{ display:flex; flex-wrap:wrap; gap:3px; justify-content:center; margin-top:5px; }
+  .btn.pending-choice{
+    background:#d98c1f; color:#fff; padding:3px 8px; font-size:.68rem; margin:0;
+  }
+  .btn.pending-choice:hover{ background:#b8721a; }
+
+  .legend{ display:flex; gap:18px; flex-wrap:wrap; justify-content:center; margin:10px 0 18px; font-size:.78rem; }
+  .legend-item{ display:flex; align-items:center; gap:6px; color:#5c5748; }
+  .swatch{ width:16px; height:16px; border-radius:3px; display:inline-block; border:1px solid var(--paper-line); }
+  .swatch.individual{ background:#fffdf6; }
+  .swatch.group{ background:#eef2f8; }
+  .swatch.pending{ background:#fdeecb; border:2px dashed #d98c1f; }
+
+  #adjustBox{ margin-top:10px; border:1px solid var(--alert); background:var(--alert-bg); border-radius:4px; padding:16px 18px; }
+  #adjustBox h3{ margin:0 0 10px; color:var(--alert); font-size:1rem; border:none; }
+  #adjustBox ul{ margin:0; padding-left:20px; }
+  #adjustBox li{ margin-bottom:6px; font-size:.85rem; }
+  #adjustOk{
+    margin-top:10px; border:1px solid var(--ok); background:#eaf3ec; color:var(--ok);
+    border-radius:4px; padding:14px 18px; font-weight:700; font-size:.9rem;
+  }
+  .foot-actions{margin-top:18px;display:flex;gap:10px;flex-wrap:wrap;}
+  .note{ font-size:.78rem; color:#8a8471; margin-top:10px; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>塾 時間割 自動作成ツール</h1>
+  <p>先生・生徒のデータを読み込むと、教室ごとの時間割を自動で組みます</p>
+  <div class="mode-switch">
+    <button id="modeBtn-intensive" onclick="setMode('intensive')">講習用の時間割</button>
+    <button id="modeBtn-regular" onclick="setMode('regular')">普段の時間割</button>
+  </div>
+</header>
+
+<div class="app">
+
+  <p class="mode-banner" id="modeBanner"></p>
+
+  <details class="help-panel" open>
+    <summary>使い方を見る</summary>
+
+    <h4>1. まずモードを選ぶ</h4>
+    <p>画面上部のボタンで「講習用（日〜土・13:00〜22:00の9コマ）」と「普段の時間割（月〜土・17:40〜21:40の3コマ）」を切り替えます。先生・生徒の名簿は共通ですが、対応可能な曜日・時間はモードごとに別々に登録されます。</p>
+
+    <h4>2. 先生・生徒を登録する（4つの方法）</h4>
+    <ul>
+      <li><b>ファイル一括アップロード</b>：Excel/CSVに先生・生徒をまとめて入力してアップロード。列名の例は入力欄の説明を参照してください。</li>
+      <li><b>写真から登録（AI読み取り）</b>：申込用紙・アンケート・名簿・ホワイトボードなどの写真をアップロードすると、AIが内容を読み取って自動登録します。読み取り後は内容の確認をおすすめします。</li>
+      <li><b>手動で追加</b>：フォームで名前・科目・（生徒なら）個別/集団・学年・学校・レベルを選び、曜日×時間帯の表にチェックを入れて登録します。</li>
+      <li><b>ランダムなサンプルデータ</b>：ボタン一つで先生10名・生徒十数名分のダミーデータを生成し、動作をすぐ試せます。</li>
+    </ul>
+
+    <h4>3. 生徒の属性について</h4>
+    <ul>
+      <li><b>個別授業／集団授業</b>：個別は必ず1教室に生徒1名。集団は必ず2名以上でまとめます。</li>
+      <li><b>学年（中1〜中3）</b>：記録・表示用の情報です。</li>
+      <li><b>学校（A・B・C・D校）</b>：集団授業では、A・B・C校の生徒同士は自由に組み合わせられますが、D校の生徒はD校同士でしか同じクラスになりません。</li>
+      <li><b>レベル（A・B・C）</b>：集団授業は同じレベルの生徒同士でのみ編成されます。</li>
+    </ul>
+
+    <h4>4. 「時間割を作成する」を押す</h4>
+    <p>登録データをもとに、教室・先生を自動で割り当てます。作成後は色分けされたマスで確認できます。</p>
+    <ul>
+      <li><span class="swatch individual"></span>個別授業のマス</li>
+      <li><span class="swatch group"></span>集団授業のマス</li>
+      <li><span class="swatch pending"></span>対応できる先生が複数いて自動で決められないマス。マス内のボタンをクリックして担当の先生を選んでください。</li>
+    </ul>
+    <p>教室不足や対応できる先生がいないなどの理由で配置できなかった生徒は、時間割の下に「調整が必要な生徒」として理由付きで表示されます。</p>
+
+    <h4>5. 登録内容の確認・修正</h4>
+    <p>「登録済み一覧」で先生一覧・生徒一覧（学年ごとに折りたたみ）を確認できます。名前をクリックするとフォームに内容が読み込まれ、修正して「この内容で更新する」を押すと上書きされます。名前で検索して絞り込むこともできます。</p>
+
+    <h4>6. 結果の保存</h4>
+    <p>「CSVでダウンロード」を押すと、作成した時間割をCSVファイルとして保存できます。Excel等でそのまま開けます。</p>
+  </details>
+
+  <div class="panel">
+    <h2>データを一括アップロード<span class="count-tag" id="fileCount">0名</span></h2>
+    <p class="cols-hint">1つのファイルに先生・生徒をまとめて入力してください。列名の例：<b>種別</b>（先生/生徒）/ <b>名前</b> / <b>科目</b> / <b>曜日</b> / <b>可能時間</b> / <b>授業形態</b>（生徒のみ：個別/集団）/ <b>学年</b>（生徒のみ）/ <b>学校</b>（生徒のみ）/ <b>レベル</b>（生徒のみ）</p>
+    <p class="cols-hint">※曜日によって時間が異なる場合は、<b>可能時間</b>列に「月17:00〜19:00、水19:00〜21:00」のように曜日を頭につけて区切って入力してください。曜日を頭につけない部分は<b>曜日</b>列で指定した全曜日に共通で適用されます。</p>
+    <p class="cols-hint">※このアップロードは、現在選択中のモード（<b id="uploadModeLabel"></b>）の対応可能時間として登録されます。名前と種別が一致する人がすでにいる場合は、その人のデータに追加されます。</p>
+    <input type="file" id="dataFile" accept=".xlsx,.xls,.csv">
+  </div>
+
+  <div class="panel">
+    <h2>写真から登録する（AIで自動読み取り）<span class="count-tag" id="imageStatusTag">未使用</span></h2>
+    <p class="cols-hint">申込用紙・アンケート用紙・スプレッドシートを印刷した紙・ホワイトボードの勤務表などを<b>写真に撮ってアップロード</b>すると、AIが内容を読み取って自動で登録します。読み取り結果は現在選択中のモード（<b id="imageModeLabel"></b>）の対応可能時間として登録されます。</p>
+    <p class="cols-hint">※AIによる自動読み取りのため、まれに読み間違いが起こります。登録後は一覧で内容をご確認いただき、必要であれば名前をクリックして修正してください。※文字が小さすぎる・写真がぼやけている場合は読み取り精度が下がります。人数が非常に多い一覧は、いくつかに分けて撮影することをおすすめします。</p>
+    <input type="file" id="imageFile" accept="image/*" capture="environment">
+    <p class="note" id="imageStatus" style="display:none;"></p>
+  </div>
+
+  <div class="panel">
+    <h2>手動で追加・編集する</h2>
+    <p class="cols-hint">曜日ごとに異なる時間帯を選べます。表内のチェックを入れた「曜日 × 時間帯」の組み合わせが、現在選択中のモード（<b id="formModeLabel"></b>）の対応可能時間として登録されます。下の一覧で名前をクリックすると、その人の内容をここに読み込んで編集できます。</p>
+    <div id="editBanner" class="edit-banner"></div>
+    <div class="form-grid">
+      <div class="field">
+        <label class="field-title">種別</label>
+        <select id="f-role" onchange="onRoleChange()">
+          <option value="teacher">先生</option>
+          <option value="student">生徒</option>
+        </select>
+      </div>
+      <div class="field">
+        <label class="field-title">名前</label>
+        <input type="text" id="f-name" placeholder="例：田中先生 / Aさん">
+      </div>
+      <div class="field student-only" style="display:none;">
+        <label class="field-title">授業形態</label>
+        <select id="f-lessonType">
+          <option value="individual">個別授業</option>
+          <option value="group">集団授業</option>
+        </select>
+      </div>
+      <div class="field student-only" style="display:none;">
+        <label class="field-title">学年</label>
+        <select id="f-grade">
+          <option value="中1">中1</option>
+          <option value="中2">中2</option>
+          <option value="中3">中3</option>
+        </select>
+      </div>
+      <div class="field student-only" style="display:none;">
+        <label class="field-title">学校</label>
+        <select id="f-school">
+          <option value="A">A校</option>
+          <option value="B">B校</option>
+          <option value="C">C校</option>
+          <option value="D">D校</option>
+        </select>
+      </div>
+      <div class="field student-only" style="display:none;">
+        <label class="field-title">レベル</label>
+        <select id="f-level">
+          <option value="A">レベルA</option>
+          <option value="B">レベルB</option>
+          <option value="C">レベルC</option>
+        </select>
+      </div>
+      <div class="field" style="grid-column:1 / -1;">
+        <label class="field-title">科目（複数選択可）</label>
+        <div class="checkbox-group" id="f-subjects">
+          <label><input type="checkbox" value="英語">英語</label>
+          <label><input type="checkbox" value="数学">数学</label>
+          <label><input type="checkbox" value="国語">国語</label>
+          <label><input type="checkbox" value="社会">社会</label>
+          <label><input type="checkbox" value="理科">理科</label>
+        </div>
+      </div>
+      <div class="field" style="grid-column:1 / -1;">
+        <label class="field-title">対応可能な曜日・時間帯（曜日ごとに個別に選択できます／現在のモード：<span id="matrixModeLabel"></span>）</label>
+        <div class="matrix-wrap"><table class="avail-matrix" id="f-matrix"></table></div>
+      </div>
+    </div>
+    <button class="btn gold" id="submitBtn" onclick="addPerson()">この内容を追加する</button>
+  </div>
+
+  <div class="panel">
+    <h2>登録済み一覧<span class="count-tag" id="totalCount">0名</span></h2>
+    <p class="cols-hint">名前をクリックすると上のフォームに読み込んで編集できます。生徒は学年ごとにまとまっており、見出しをクリックすると開閉できます。</p>
+    <input type="text" id="peopleSearch" placeholder="名前で検索…" oninput="filterPeople()">
+
+    <h3 class="roster-subhead">先生一覧<span class="count-tag" id="teacherCount">0名</span></h3>
+    <div class="people-table-wrap">
+      <table class="people-table" id="teacherTable">
+        <thead><tr><th>名前</th><th>科目</th><th id="teacherAvailHead">対応可能</th><th></th></tr></thead>
+        <tbody id="teacherListBody"></tbody>
+      </table>
+    </div>
+
+    <h3 class="roster-subhead">生徒一覧（学年ごと）<span class="count-tag" id="studentCount">0名</span></h3>
+    <div id="studentGroups"></div>
+  </div>
+
+  <div class="actions">
+    <button class="btn gold" onclick="generateTimetable()">時間割を作成する</button>
+    <button class="btn ghost" onclick="loadSample()">ランダムなサンプルデータで試す</button>
+    <button class="btn ghost" onclick="resetAll()">リセット</button>
+  </div>
+
+  <section id="resultSection">
+    <h2 id="resultHeading">作成された時間割</h2>
+    <div class="legend">
+      <span class="legend-item"><span class="swatch individual"></span>個別授業</span>
+      <span class="legend-item"><span class="swatch group"></span>集団授業</span>
+      <span class="legend-item"><span class="swatch pending"></span>先生の選択待ち（マス内のボタンから選んでください）</span>
+    </div>
+    <div id="dayTables"></div>
+    <div id="adjustSlot"></div>
+    <div class="foot-actions">
+      <button class="btn ghost" onclick="downloadCSV()">CSVでダウンロード</button>
+    </div>
+    <p class="note">※個別授業は必ず1名、集団授業は必ず2名以上でまとめます。集団授業は「同じ科目」「同じレベル」の生徒同士のみで構成し、D校の生徒はD校同士でのみ、A・B・C校の生徒同士は自由に組み合わせます。学年は表示・記録用の情報です。オレンジ色のマスは、対応できる先生が複数いて自動では決められないため、マス内のボタンから担当の先生を選んでください（選ぶまでの間、候補の先生はその時間帯は仮押さえされ、他の生徒には割り当てられません）。</p>
+  </section>
+
+</div>
+
+<script>
+const ALL_WEEKDAYS = ["月","火","水","木","金","土","日"];
+const SUBJECTS = ["英語","数学","国語","社会","理科"];
+const GRADES = ["中1","中2","中3"];
+const SCHOOLS = ["A","B","C","D"];
+const LEVELS = ["A","B","C"];
+const ROOM_COUNT = 9;
+
+const MODES = {
+  intensive: {
+    label: "講習用（日〜土・13:00〜22:00）",
+    shortLabel: "講習用",
+    days: ["月","火","水","木","金","土","日"],
+    slotLabels: Array.from({length:9}, (_,i)=>`${13+i}:00〜${14+i}:00`)
+  },
+  regular: {
+    label: "普段の時間割（月〜土・3コマ）",
+    shortLabel: "普段",
+    days: ["月","火","水","木","金","土"],
+    slotLabels: ["17:40〜19:00","19:00〜20:20","20:20〜21:40"]
+  }
+};
+
+let currentMode = "intensive";
+let people = []; // {role,name,subjects,avail:{intensive:Set,regular:Set}, [student-only] lessonType,grade,school,level}
+let editingIndex = null; // index into `people` currently loaded into the form for editing, or null
+
+function curDef(){ return MODES[currentMode]; }
+
+function setMode(mode){
+  currentMode = mode;
+  document.getElementById("modeBtn-intensive").classList.toggle("active", mode==="intensive");
+  document.getElementById("modeBtn-regular").classList.toggle("active", mode==="regular");
+  document.getElementById("modeBanner").textContent = "現在のモード： "+curDef().label;
+  document.getElementById("uploadModeLabel").textContent = curDef().shortLabel;
+  document.getElementById("imageModeLabel").textContent = curDef().shortLabel;
+  document.getElementById("formModeLabel").textContent = curDef().shortLabel;
+  document.getElementById("matrixModeLabel").textContent = curDef().label;
+  cancelEdit();
+  renderMatrix();
+  renderPeopleTable();
+  document.getElementById("resultSection").style.display = "none";
+}
+
+// ---------- day x time matrix for manual entry ----------
+function renderMatrix(){
+  const def = curDef();
+  const wrap = document.getElementById("f-matrix");
+  let html = "<tr><th class='day-head'>曜日 ＼ 時間</th>";
+  def.slotLabels.forEach((label)=>{ html += `<th>${label}</th>`; });
+  html += "</tr>";
+  def.days.forEach(d=>{
+    html += `<tr><td class="day-cell">${d}<span class="matrix-row-toggle" onclick="toggleRow('${d}')">全選択/解除</span></td>`;
+    def.slotLabels.forEach((label,i)=>{
+      html += `<td><input type="checkbox" class="matrix-cell" data-day="${d}" data-slot="${i}"></td>`;
+    });
+    html += "</tr>";
+  });
+  wrap.innerHTML = html;
+}
+function toggleRow(day){
+  const boxes = [...document.querySelectorAll(`.matrix-cell[data-day="${day}"]`)];
+  const allChecked = boxes.every(b=>b.checked);
+  boxes.forEach(b=> b.checked = !allChecked);
+}
+
+function onRoleChange(){
+  const role = document.getElementById("f-role").value;
+  document.querySelectorAll(".student-only").forEach(el=>{
+    el.style.display = role==="student" ? "block" : "none";
+  });
+}
+
+function availKey(day, slot){ return day+"_"+slot; }
+function schoolCategory(school){ return school==="D" ? "D" : "ABC"; }
+function newAvail(){ return {intensive:new Set(), regular:new Set()}; }
+
+function findPersonIndex(role, name){
+  return people.findIndex(p=>p.role===role && p.name===name);
+}
+
+// used for fresh "add" submissions: merges into an existing same-name person (adds to current mode only)
+// or creates a brand new person
+function upsertPerson(partial, availSet, mode){
+  const idx = findPersonIndex(partial.role, partial.name);
+  if(idx===-1){
+    const person = { role: partial.role, name: partial.name, subjects: partial.subjects.slice(), avail: newAvail() };
+    if(partial.role==="student"){
+      person.lessonType = partial.lessonType;
+      person.grade = partial.grade;
+      person.school = partial.school;
+      person.level = partial.level;
+    }
+    availSet.forEach(k=>person.avail[mode].add(k));
+    people.push(person);
+  }else{
+    const person = people[idx];
+    partial.subjects.forEach(s=>{ if(!person.subjects.includes(s)) person.subjects.push(s); });
+    if(partial.role==="student"){
+      person.lessonType = partial.lessonType;
+      person.grade = partial.grade;
+      person.school = partial.school;
+      person.level = partial.level;
+    }
+    availSet.forEach(k=>person.avail[mode].add(k));
+  }
+}
+
+// ---------- manual add / edit ----------
+function addPerson(){
+  const role = document.getElementById("f-role").value;
+  const name = document.getElementById("f-name").value.trim();
+  const subjects = [...document.querySelectorAll("#f-subjects input:checked")].map(i=>i.value);
+  const checkedCells = [...document.querySelectorAll(".matrix-cell:checked")];
+
+  if(!name){ alert("名前を入力してください。"); return; }
+  if(subjects.length===0){ alert("科目を1つ以上選択してください。"); return; }
+  if(checkedCells.length===0){ alert("対応可能な曜日・時間帯を1つ以上選択してください。"); return; }
+
+  const availSet = new Set();
+  checkedCells.forEach(cb=> availSet.add(availKey(cb.dataset.day, parseInt(cb.dataset.slot,10))));
+
+  const partial = {role, name, subjects};
+  if(role==="student"){
+    partial.lessonType = document.getElementById("f-lessonType").value;
+    partial.grade = document.getElementById("f-grade").value;
+    partial.school = document.getElementById("f-school").value;
+    partial.level = document.getElementById("f-level").value;
+  }
+
+  if(editingIndex!==null){
+    // re-registering an existing person: fully replace their details and this mode's availability
+    const person = people[editingIndex];
+    person.role = role;
+    person.name = name;
+    person.subjects = subjects.slice();
+    if(role==="student"){
+      person.lessonType = partial.lessonType;
+      person.grade = partial.grade;
+      person.school = partial.school;
+      person.level = partial.level;
+    }else{
+      delete person.lessonType; delete person.grade; delete person.school; delete person.level;
+    }
+    person.avail[currentMode] = availSet; // only this mode's availability is overwritten; the other mode is untouched
+    editingIndex = null;
+  }else{
+    upsertPerson(partial, availSet, currentMode);
+  }
+
+  renderPeopleTable();
+  clearForm();
+  updateEditBanner();
+}
+
+function clearForm(){
+  document.getElementById("f-name").value = "";
+  document.querySelectorAll("#f-subjects input, .matrix-cell").forEach(i=>i.checked=false);
+}
+
+function editPerson(idx){
+  const p = people[idx];
+  document.getElementById("f-role").value = p.role;
+  onRoleChange();
+  document.getElementById("f-name").value = p.name;
+  document.querySelectorAll("#f-subjects input").forEach(cb=>{ cb.checked = p.subjects.includes(cb.value); });
+  if(p.role==="student"){
+    document.getElementById("f-lessonType").value = p.lessonType;
+    document.getElementById("f-grade").value = p.grade;
+    document.getElementById("f-school").value = p.school;
+    document.getElementById("f-level").value = p.level;
+  }
+  document.querySelectorAll(".matrix-cell").forEach(cb=>{
+    const key = availKey(cb.dataset.day, parseInt(cb.dataset.slot,10));
+    cb.checked = p.avail[currentMode].has(key);
+  });
+  editingIndex = idx;
+  updateEditBanner();
+  document.querySelector(".edit-banner").scrollIntoView({behavior:"smooth", block:"center"});
+}
+
+function cancelEdit(){
+  editingIndex = null;
+  clearForm();
+  updateEditBanner();
+}
+
+function updateEditBanner(){
+  const banner = document.getElementById("editBanner");
+  const btn = document.getElementById("submitBtn");
+  if(editingIndex!==null && people[editingIndex]){
+    banner.style.display = "block";
+    banner.innerHTML = `「${escapeHtml(people[editingIndex].name)}」を編集中です（${curDef().shortLabel}の対応可能時間を上書きします）<a onclick="cancelEdit()">編集をキャンセル</a>`;
+    btn.textContent = "この内容で更新する";
+  }else{
+    banner.style.display = "none";
+    btn.textContent = "この内容を追加する";
+  }
+}
+
+function removePerson(idx){
+  people.splice(idx,1);
+  if(editingIndex!==null){ cancelEdit(); }
+  renderPeopleTable();
+}
+
+function renderPeopleTable(){
+  document.getElementById("fileCount").textContent = people.length+"名";
+  document.getElementById("totalCount").textContent = people.length+"名";
+  renderTeacherList();
+  renderStudentList();
+  filterPeople();
+}
+
+function renderTeacherList(){
+  const rows = people.map((p,idx)=>({p,idx})).filter(o=>o.p.role==="teacher");
+  document.getElementById("teacherCount").textContent = rows.length+"名";
+  document.getElementById("teacherAvailHead").textContent = `${curDef().shortLabel} 対応可能`;
+  const body = document.getElementById("teacherListBody");
+  if(rows.length===0){
+    body.innerHTML = `<tr><td colspan="4" class="empty-row">先生が登録されていません</td></tr>`;
+    return;
+  }
+  body.innerHTML = rows.map(({p,idx})=>{
+    const availSummary = summarizeAvail(p.avail[currentMode], currentMode) || "（未設定）";
+    return `<tr data-name="${escapeHtml(p.name)}">
+      <td><span class="name-link" onclick="editPerson(${idx})">${escapeHtml(p.name)}</span></td>
+      <td>${escapeHtml(p.subjects.join("、"))}</td>
+      <td>${escapeHtml(availSummary)}</td>
+      <td><button class="btn small ghost" onclick="removePerson(${idx})">削除</button></td>
+    </tr>`;
+  }).join("");
+}
+
+function renderStudentList(){
+  const byGrade = {};
+  GRADES.forEach(g=> byGrade[g]=[]);
+  people.forEach((p,idx)=>{
+    if(p.role==="student"){
+      if(!byGrade[p.grade]) byGrade[p.grade]=[];
+      byGrade[p.grade].push({p,idx});
+    }
+  });
+  const total = GRADES.reduce((sum,g)=> sum+(byGrade[g]?byGrade[g].length:0), 0);
+  document.getElementById("studentCount").textContent = total+"名";
+
+  const wrap = document.getElementById("studentGroups");
+  if(total===0){
+    wrap.innerHTML = `<p class="empty-row">生徒が登録されていません</p>`;
+    return;
+  }
+
+  wrap.innerHTML = GRADES.map(g=>{
+    const list = byGrade[g] || [];
+    let inner;
+    if(list.length===0){
+      inner = `<p class="empty-row">該当する生徒がいません</p>`;
+    }else{
+      inner = `<table class="people-table">
+        <thead><tr><th>名前</th><th>授業形態</th><th>学校</th><th>レベル</th><th>科目</th><th>${curDef().shortLabel} 対応可能</th><th></th></tr></thead>
+        <tbody>` + list.map(({p,idx})=>{
+          const availSummary = summarizeAvail(p.avail[currentMode], currentMode) || "（未設定）";
+          return `<tr data-name="${escapeHtml(p.name)}">
+            <td><span class="name-link" onclick="editPerson(${idx})">${escapeHtml(p.name)}</span></td>
+            <td><span class="type-tag ${p.lessonType}">${p.lessonType==='group'?'集団':'個別'}</span></td>
+            <td><span class="school-tag ${p.school}">${p.school}校</span></td>
+            <td>レベル${p.level}</td>
+            <td>${escapeHtml(p.subjects.join("、"))}</td>
+            <td>${escapeHtml(availSummary)}</td>
+            <td><button class="btn small ghost" onclick="removePerson(${idx})">削除</button></td>
+          </tr>`;
+        }).join("") + `</tbody></table>`;
+    }
+    return `<details class="student-group"><summary>${g}（${list.length}名）</summary>${inner}</details>`;
+  }).join("");
+}
+
+function filterPeople(){
+  const q = document.getElementById("peopleSearch").value.trim().toLowerCase();
+  document.querySelectorAll("#teacherListBody tr[data-name], #studentGroups tr[data-name]").forEach(tr=>{
+    const match = !q || tr.dataset.name.toLowerCase().includes(q);
+    tr.style.display = match ? "" : "none";
+  });
+  document.querySelectorAll("details.student-group").forEach(details=>{
+    if(!q){ return; } // leave open/closed state as the person left it when search is empty
+    const anyVisible = [...details.querySelectorAll("tr[data-name]")].some(tr=>tr.style.display!=="none");
+    details.open = anyVisible;
+  });
+}
+
+function summarizeAvail(avail, mode){
+  const def = MODES[mode];
+  const byDay = {};
+  [...avail].forEach(key=>{
+    const [day, slotStr] = key.split("_");
+    const slot = parseInt(slotStr,10);
+    if(!byDay[day]) byDay[day] = [];
+    byDay[day].push(slot);
+  });
+  return def.days.filter(d=>byDay[d]).map(d=>{
+    const slots = byDay[d].sort((a,b)=>a-b).map(s=>def.slotLabels[s]);
+    return `${d}(${slots.join("・")})`;
+  }).join("、");
+}
+
+function escapeHtml(s){
+  return String(s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+// ---------- file upload (combined teacher+student, per-day time support) ----------
+function splitList(str){
+  if(!str) return [];
+  return String(str).split(/[、,\/]/).map(s=>s.trim()).filter(Boolean);
+}
+
+function parseDays(str, allowedDays){
+  const found = [];
+  splitList(str).forEach(piece=>{
+    allowedDays.forEach(d=>{ if(piece.includes(d) && !found.includes(d)) found.push(d); });
+  });
+  return found;
+}
+
+// parses a single "13:00〜18:00"-style range (no day prefix) into a set of slot indices for the given mode
+function parseRangeToSlots(rangeStr, mode){
+  const slots = new Set();
+  const def = MODES[mode];
+  const nums = rangeStr.match(/\d{1,2}(?::\d{2})?/g);
+  if(!nums || nums.length<2) return slots;
+  const toMinutes = t=>{ const [h,m] = t.split(":").map(Number); return h*60 + (m||0); };
+  const start = toMinutes(nums[0]);
+  const end = toMinutes(nums[1]);
+  if(isNaN(start)||isNaN(end)||end<=start) return slots;
+  def.slotLabels.forEach((label,i)=>{
+    const [ls, le] = label.split("〜").map(toMinutes);
+    if(start < le && end > ls) slots.add(i);
+  });
+  return slots;
+}
+
+// parses the 可能時間 column, supporting per-piece day prefixes like "月17:00〜19:00、水19:00〜21:00"
+// pieces without a day prefix fall back to every day in fallbackDays
+function parseAvailabilityColumn(timeStr, fallbackDays, mode){
+  const avail = new Set();
+  if(!timeStr) return avail;
+  const def = MODES[mode];
+  const pieces = String(timeStr).split(/[、,]/).map(s=>s.trim()).filter(Boolean);
+  pieces.forEach(piece=>{
+    let day = null;
+    let rest = piece;
+    if(def.days.includes(piece[0])){
+      day = piece[0];
+      rest = piece.slice(1).replace(/^[:：]\s*/,"");
+    }
+    const slots = parseRangeToSlots(rest, mode);
+    const targetDays = day ? [day] : fallbackDays;
+    targetDays.forEach(d=> slots.forEach(s=> avail.add(availKey(d,s))));
+  });
+  return avail;
+}
+
+function findKey(row, keywords){
+  const keys = Object.keys(row);
+  for(const k of keys){ if(keywords.some(kw=>k.includes(kw))) return k; }
+  return null;
+}
+
+function guessRole(value){
+  const v = String(value||"");
+  if(v.includes("先生") || v.includes("教師") || v.toLowerCase().includes("teacher")) return "teacher";
+  if(v.includes("生徒") || v.toLowerCase().includes("student")) return "student";
+  return null;
+}
+function guessLessonType(value){
+  const v = String(value||"");
+  if(v.includes("集団") || v.toLowerCase().includes("group")) return "group";
+  return "individual";
+}
+function guessGrade(value){
+  const v = String(value||"");
+  const found = GRADES.find(g=>v.includes(g));
+  return found || GRADES[0];
+}
+function guessSchool(value){
+  const v = String(value||"").toUpperCase();
+  const found = SCHOOLS.find(s=> v.includes(s+"校") || v.trim()===s || v.includes(s));
+  return found || "A";
+}
+function guessLevel(value){
+  const v = String(value||"").toUpperCase();
+  const found = LEVELS.find(l=> v.includes("レベル"+l) || v.trim()===l);
+  return found || "A";
+}
+
+function getExactColumn(row, name){
+  return Object.prototype.hasOwnProperty.call(row, name) ? row[name] : undefined;
+}
+function isMarked(value){
+  if(value===undefined || value===null) return false;
+  const v = String(value).trim();
+  if(v==="") return false;
+  const negatives = ["×","x","X","no","NO","No","false","FALSE","0","ー","-","－"];
+  return !negatives.includes(v);
+}
+
+function rowsToPeople(rows, mode){
+  const nameKeys = ["名前","氏名"];
+  const subjKeys = ["科目","教科"];
+  const dayKeys = ["曜日"];
+  const timeKeys = ["可能時間","時間"];
+  const roleKeys = ["種別","区分","役割"];
+  const typeKeys = ["授業形態","形態"];
+  const gradeKeys = ["学年"];
+  const schoolKeys = ["学校"];
+  const levelKeys = ["レベル"];
+  const out = [];
+  rows.forEach(row=>{
+    const nk = findKey(row,nameKeys);
+    if(!nk) return;
+    const name = String(row[nk]).trim();
+    if(!name) return;
+
+    const rk = findKey(row,roleKeys);
+    let role = rk ? guessRole(row[rk]) : null;
+    if(!role) role = guessRole(Object.values(row).join(" "));
+    if(!role) return;
+
+    const sk = findKey(row,subjKeys);
+    const dk = findKey(row,dayKeys);
+    const tk = findKey(row,timeKeys);
+
+    const fallbackDays = dk ? parseDays(row[dk], MODES[mode].days) : [];
+    const availSet = tk ? parseAvailabilityColumn(row[tk], fallbackDays, mode) : new Set();
+
+    const partial = { role, name, subjects: sk ? splitList(row[sk]) : [] };
+    if(role==="student"){
+      const ltk = findKey(row,typeKeys);
+      const gk = findKey(row,gradeKeys);
+      const chk = findKey(row,schoolKeys);
+      const lvk = findKey(row,levelKeys);
+      partial.lessonType = guessLessonType(ltk ? row[ltk] : "");
+      partial.grade = guessGrade(gk ? row[gk] : "");
+      partial.school = guessSchool(chk ? row[chk] : "");
+      partial.level = guessLevel(lvk ? row[lvk] : "");
+    }
+    out.push({partial, availSet});
+  });
+  return out;
+}
+
+document.getElementById("dataFile").addEventListener("change", e=>{
+  const f = e.target.files[0];
+  if(!f) return;
+  const reader = new FileReader();
+  reader.onload = ev=>{
+    try{
+      const data = new Uint8Array(ev.target.result);
+      const wb = XLSX.read(data,{type:"array"});
+      const sheet = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(sheet,{defval:""});
+      const parsed = rowsToPeople(rows, currentMode);
+      if(parsed.length===0){
+        alert("データを読み取れませんでした。列名（種別/名前/科目/曜日/可能時間）をご確認ください。");
+        return;
+      }
+      parsed.forEach(({partial, availSet})=> upsertPerson(partial, availSet, currentMode));
+      renderPeopleTable();
+    }catch(err){
+      alert("ファイルの読み込みに失敗しました: "+err.message);
+    }
+  };
+  reader.readAsArrayBuffer(f);
+});
+
+// ---------- image-based registration (AI vision) ----------
+
+// shrinks a photo client-side before sending it to the API (mobile photos can otherwise be several MB)
+function resizeImageToBase64(file, maxDim){
+  return new Promise((resolve, reject)=>{
+    const reader = new FileReader();
+    reader.onload = ev=>{
+      const img = new Image();
+      img.onload = ()=>{
+        let {width, height} = img;
+        if(width > maxDim || height > maxDim){
+          const scale = maxDim / Math.max(width, height);
+          width = Math.round(width*scale);
+          height = Math.round(height*scale);
+        }
+        const canvas = document.createElement("canvas");
+        canvas.width = width; canvas.height = height;
+        canvas.getContext("2d").drawImage(img, 0, 0, width, height);
+        const dataUrl = canvas.toDataURL("image/jpeg", 0.85);
+        resolve({ base64: dataUrl.split(",")[1], mediaType: "image/jpeg" });
+      };
+      img.onerror = reject;
+      img.src = ev.target.result;
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+const IMAGE_EXTRACT_PROMPT = `あなたは塾の登録データ入力を手伝うアシスタントです。添付された画像（申込用紙・アンケート・名簿・スプレッドシートの写真・ホワイトボードの予定表など）から、先生または生徒の登録情報を読み取ってください。
+
+出力は必ず次の形式のJSON配列のみにしてください。説明文やコードブロックの記号（\`\`\`）は一切付けないでください。画像に写っている人物ごとに1つのオブジェクトを作成してください。該当情報が読み取れない項目は、書かれている範囲で妥当な値を推測してください。
+
+[
+  {
+    "role": "teacher または student",
+    "name": "名前",
+    "subjects": ["英語","数学","国語","社会","理科" のうち該当するもの],
+    "lessonType": "individual または group（studentのみ。個別なら individual、集団なら group）",
+    "grade": "中1 または 中2 または 中3（studentのみ）",
+    "school": "A または B または C または D（studentのみ）",
+    "level": "A または B または C（studentのみ）",
+    "availability": [ {"day":"月〜日の漢字1文字", "start":"HH:MM", "end":"HH:MM"} ]
+  }
+]
+
+科目名は必ず「英語」「数学」「国語」「社会」「理科」の表記に統一してください（例：「英会話」→「英語」）。曜日は漢字1文字、時刻は24時間表記のHH:MM形式にしてください。複数の対応可能時間帯があればavailability配列に複数追加してください。関係する人物情報が画像に見つからない場合は空配列 [] を返してください。`;
+
+async function callVisionExtract(base64, mediaType){
+  const response = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      model: "claude-sonnet-4-6",
+      max_tokens: 1000,
+      messages: [{
+        role: "user",
+        content: [
+          { type: "image", source: { type: "base64", media_type: mediaType, data: base64 } },
+          { type: "text", text: IMAGE_EXTRACT_PROMPT }
+        ]
+      }]
+    })
+  });
+  const data = await response.json();
+  const text = (data.content || []).map(b => b.text || "").join("\n");
+  const clean = text.replace(/```json|```/g, "").trim();
+  return JSON.parse(clean);
+}
+
+document.getElementById("imageFile").addEventListener("change", async e=>{
+  const f = e.target.files[0];
+  if(!f) return;
+  const statusTag = document.getElementById("imageStatusTag");
+  const statusEl = document.getElementById("imageStatus");
+  statusEl.style.display = "block";
+  statusTag.textContent = "解析中…";
+  statusEl.textContent = "画像を解析しています。少し時間がかかる場合があります…";
+  try{
+    const {base64, mediaType} = await resizeImageToBase64(f, 1600);
+    const records = await callVisionExtract(base64, mediaType);
+    if(!Array.isArray(records) || records.length===0){
+      statusTag.textContent = "読み取り0件";
+      statusEl.textContent = "画像から登録できる情報が見つかりませんでした。より鮮明な写真で再度お試しいただくか、手動入力・ファイルアップロードをご利用ください。";
+      return;
+    }
+    let count = 0;
+    records.forEach(raw=>{
+      const name = String(raw.name || "").trim();
+      if(!name) return;
+      const role = raw.role === "teacher" ? "teacher" : "student";
+      const subjects = Array.isArray(raw.subjects) ? raw.subjects.filter(s=>SUBJECTS.includes(s)) : [];
+      const partial = { role, name, subjects };
+      if(role==="student"){
+        partial.lessonType = guessLessonType(raw.lessonType || "");
+        partial.grade = guessGrade(raw.grade || "");
+        partial.school = guessSchool(raw.school || "");
+        partial.level = guessLevel(raw.level || "");
+      }
+      const availSet = new Set();
+      (Array.isArray(raw.availability) ? raw.availability : []).forEach(a=>{
+        if(!a || !a.day || !a.start || !a.end) return;
+        if(!MODES[currentMode].days.includes(a.day)) return;
+        const slots = parseRangeToSlots(`${a.start}〜${a.end}`, currentMode);
+        slots.forEach(s=> availSet.add(availKey(a.day, s)));
+      });
+      upsertPerson(partial, availSet, currentMode);
+      count++;
+    });
+    renderPeopleTable();
+    statusTag.textContent = "完了";
+    statusEl.textContent = `${count}名を読み取り、${curDef().shortLabel}の対応可能時間として登録しました。内容に誤りがないか一覧でご確認のうえ、必要であれば名前をクリックして修正してください。`;
+  }catch(err){
+    statusTag.textContent = "エラー";
+    statusEl.textContent = "画像の読み取りに失敗しました。写真を変えるか、手動入力・ファイルアップロードをお試しください。（"+err.message+"）";
+  }finally{
+    e.target.value = "";
+  }
+});
+
+// ---------- random sample data ----------
+function pickRandom(arr, n){
+  const copy = arr.slice();
+  for(let i=copy.length-1;i>0;i--){
+    const j = Math.floor(Math.random()*(i+1));
+    [copy[i],copy[j]] = [copy[j],copy[i]];
+  }
+  return copy.slice(0, n);
+}
+function pickOne(arr){ return arr[Math.floor(Math.random()*arr.length)]; }
+function randInt(min,max){ return Math.floor(Math.random()*(max-min+1))+min; }
+
+// gives each day its own random subset of slots (bounded strictly to that mode's own slot indices),
+// so 講習用 always draws from its 9 hourly slots and 普段 always draws from its own 3 slots — never mixed.
+function buildVariedAvailSet(days, mode, minPerDay, maxPerDay){
+  const slotPool = MODES[mode].slotLabels.map((_,i)=>i);
+  const set = new Set();
+  days.forEach(d=>{
+    const n = randInt(minPerDay, Math.min(maxPerDay, slotPool.length));
+    pickRandom(slotPool, n).forEach(s=> set.add(availKey(d,s)));
+  });
+  return set;
+}
+
+function loadSample(){
+  const surnames = ["田中","鈴木","佐藤","高橋","伊藤","渡辺","山本","中村","小林","加藤"];
+  const teacherList = surnames.map(sn=>{
+    const subjects = pickRandom(SUBJECTS, randInt(2,3)); // 先生は最低2教科・最大3教科
+    const intensiveDays = pickRandom(MODES.intensive.days, 3);
+    const regularDays = pickRandom(MODES.regular.days, 3);
+    return {
+      role:"teacher", name: sn+"先生", subjects,
+      avail:{
+        intensive: buildVariedAvailSet(intensiveDays, "intensive", 2, 5),
+        regular: buildVariedAvailSet(regularDays, "regular", 1, 3)
+      }
+    };
+  });
+
+  const studentCount = randInt(16,24);
+  const studentList = [];
+  for(let i=1;i<=studentCount;i++){
+    const subjects = pickRandom(SUBJECTS, randInt(1,2));
+    const intensiveDays = pickRandom(MODES.intensive.days, randInt(1,3));
+    const regularDays = pickRandom(MODES.regular.days, randInt(1,3));
+    studentList.push({
+      role:"student",
+      name: "生徒"+String(i).padStart(2,"0"),
+      subjects,
+      lessonType: Math.random()<0.1 ? "individual" : "group", // 個別は約1割
+      grade: pickOne(GRADES),
+      school: pickOne(SCHOOLS),
+      level: pickOne(LEVELS),
+      avail:{
+        intensive: buildVariedAvailSet(intensiveDays, "intensive", 1, 2),
+        regular: buildVariedAvailSet(regularDays, "regular", 1, 2)
+      }
+    });
+  }
+
+  people = teacherList.concat(studentList);
+  cancelEdit();
+  renderPeopleTable();
+}
+
+// ---------- scheduling ----------
+function intersect(a,b){ return a.find(x=>b.includes(x)); }
+
+function generateTimetable(){
+  const def = curDef();
+  const SLOT_LABELS = def.slotLabels;
+  const SLOT_COUNT = SLOT_LABELS.length;
+
+  const teachers = people.filter(p=>p.role==="teacher");
+  const students = people.filter(p=>p.role==="student");
+  if(teachers.length===0 || students.length===0){
+    alert("先生と生徒の両方のデータを追加してください。");
+    return;
+  }
+
+  const usedDays = def.days.filter(d=>
+    people.some(p=> [...p.avail[currentMode]].some(k=>k.startsWith(d+"_")))
+  );
+  if(usedDays.length===0){
+    alert(`${def.shortLabel}の曜日・時間が設定されているデータがありません。`);
+    return;
+  }
+
+  const allGrids = {};
+  const unadjusted = [];
+
+  usedDays.forEach(day=>{
+    const grid = Array.from({length:SLOT_COUNT}, ()=>Array(ROOM_COUNT).fill(null));
+    const teacherBusy = Array.from({length:SLOT_COUNT}, ()=>new Set());
+    const studentPrevRoom = {};
+
+    for(let slot=0; slot<SLOT_COUNT; slot++){
+      const key = availKey(day,slot);
+      const needAll = students.filter(s=>s.avail[currentMode].has(key));
+      const needIndividual = needAll.filter(s=>s.lessonType!=="group");
+      const needGroup = needAll.filter(s=>s.lessonType==="group");
+
+      const assignedThisSlot = new Set();
+      const freeRoomsList = ()=>{
+        const arr=[];
+        for(let r=0;r<ROOM_COUNT;r++){ if(grid[slot][r]===null) arr.push(r); }
+        return arr;
+      };
+
+      needIndividual
+        .sort((a,b)=>{
+          const ca = teachers.filter(t=>t.avail[currentMode].has(key) && intersect(t.subjects,a.subjects)).length;
+          const cb = teachers.filter(t=>t.avail[currentMode].has(key) && intersect(t.subjects,b.subjects)).length;
+          return ca-cb;
+        })
+        .forEach(student=>{
+          const freeRooms = freeRoomsList();
+          if(freeRooms.length===0){
+            unadjusted.push({name:student.name, day, slotLabel:SLOT_LABELS[slot], reason:"この曜日・時間は教室が全て埋まっています（教室不足）"});
+            return;
+          }
+          const candIgnoringBusy = teachers.filter(t=>t.avail[currentMode].has(key) && intersect(t.subjects,student.subjects));
+          if(candIgnoringBusy.length===0){
+            unadjusted.push({name:student.name, day, slotLabel:SLOT_LABELS[slot], reason:"対応教科をこの曜日・時間に担当できる先生がいません（個別授業）"});
+            return;
+          }
+          const freeCandidates = candIgnoringBusy.filter(t=>!teacherBusy[slot].has(t.name));
+          if(freeCandidates.length===0){
+            unadjusted.push({name:student.name, day, slotLabel:SLOT_LABELS[slot], reason:"対応可能な先生は全員この曜日・時間に他の授業が入っています（個別授業）"});
+            return;
+          }
+          let room = null;
+          const prev = studentPrevRoom[student.name];
+          if(prev && prev.slot === slot-1 && grid[slot][prev.room]===null){
+            room = prev.room;
+          }else{
+            room = freeRooms[0];
+          }
+
+          if(freeCandidates.length===1){
+            const freeTeacher = freeCandidates[0];
+            const subject = intersect(freeTeacher.subjects, student.subjects);
+            grid[slot][room] = {students:[student.name], teacher:freeTeacher.name, subject, type:"individual"};
+            teacherBusy[slot].add(freeTeacher.name);
+          }else{
+            // multiple equally-valid teachers: reserve them all and let a human pick
+            freeCandidates.forEach(t=>teacherBusy[slot].add(t.name));
+            const subject = intersect(freeCandidates[0].subjects, student.subjects);
+            grid[slot][room] = {
+              type:"pending", originalType:"individual",
+              students:[student.name],
+              candidates: freeCandidates.map(t=>t.name),
+              subject
+            };
+          }
+          studentPrevRoom[student.name] = {slot, room};
+          assignedThisSlot.add(student.name);
+        });
+
+      const remainingGroup = needGroup.filter(s=>!assignedThisSlot.has(s.name));
+      const used = new Set();
+
+      SUBJECTS.forEach(subject=>{
+        LEVELS.forEach(level=>{
+          ["D","ABC"].forEach(schoolCat=>{
+            const cluster = remainingGroup.filter(s=>
+              !used.has(s.name) &&
+              s.subjects.includes(subject) &&
+              s.level===level &&
+              schoolCategory(s.school)===schoolCat
+            );
+            if(cluster.length===0) return;
+
+            const label = `${subject}・レベル${level}・${schoolCat==="D"?"D校":"A/B/C校"}`;
+
+            if(cluster.length===1){
+              unadjusted.push({name:cluster[0].name, day, slotLabel:SLOT_LABELS[slot], reason:`集団授業（${label}）を希望していますが、同じ曜日・時間に条件が一致する生徒が他にいません`});
+              used.add(cluster[0].name);
+              return;
+            }
+
+            const freeRooms = freeRoomsList();
+            if(freeRooms.length===0){
+              cluster.forEach(s=>{
+                unadjusted.push({name:s.name, day, slotLabel:SLOT_LABELS[slot], reason:`この曜日・時間は教室が全て埋まっています（教室不足・${label}）`});
+                used.add(s.name);
+              });
+              return;
+            }
+
+            const freeTeachersForGroup = teachers.filter(t=> t.avail[currentMode].has(key) && t.subjects.includes(subject) && !teacherBusy[slot].has(t.name));
+            if(freeTeachersForGroup.length===0){
+              cluster.forEach(s=>{
+                unadjusted.push({name:s.name, day, slotLabel:SLOT_LABELS[slot], reason:`${subject}を担当できる先生がこの曜日・時間に空いていません（${label}）`});
+                used.add(s.name);
+              });
+              return;
+            }
+
+            const roomVotes = {};
+            cluster.forEach(s=>{
+              const prev = studentPrevRoom[s.name];
+              if(prev && prev.slot === slot-1) roomVotes[prev.room] = (roomVotes[prev.room]||0)+1;
+            });
+            let room = null, bestVotes = 0;
+            Object.keys(roomVotes).forEach(r=>{
+              r = parseInt(r,10);
+              if(grid[slot][r]===null && roomVotes[r] > bestVotes){ bestVotes = roomVotes[r]; room = r; }
+            });
+            if(room===null) room = freeRooms[0];
+
+            if(freeTeachersForGroup.length===1){
+              const freeTeacher = freeTeachersForGroup[0];
+              grid[slot][room] = {
+                students: cluster.map(s=>s.name),
+                teacher: freeTeacher.name,
+                subject, type:"group",
+                level, schoolCat
+              };
+              teacherBusy[slot].add(freeTeacher.name);
+            }else{
+              // multiple equally-valid teachers: reserve them all and let a human pick
+              freeTeachersForGroup.forEach(t=>teacherBusy[slot].add(t.name));
+              grid[slot][room] = {
+                type:"pending", originalType:"group",
+                students: cluster.map(s=>s.name),
+                candidates: freeTeachersForGroup.map(t=>t.name),
+                subject, level, schoolCat
+              };
+            }
+            cluster.forEach(s=>{
+              studentPrevRoom[s.name] = {slot, room};
+              used.add(s.name);
+            });
+          });
+        });
+      });
+    }
+
+    allGrids[day] = grid;
+  });
+
+  renderResult(usedDays, allGrids, unadjusted, SLOT_LABELS);
+}
+
+function renderResult(usedDays, allGrids, unadjusted, SLOT_LABELS){
+  document.getElementById("resultHeading").textContent = `作成された時間割（${curDef().shortLabel}）`;
+  const container = document.getElementById("dayTables");
+  let html = "";
+  usedDays.forEach(day=>{
+    const grid = allGrids[day];
+    html += `<div class="day-block"><h3>${day}曜日</h3><div class="table-wrap"><table class="result-table">`;
+    html += "<tr><th>時間帯</th>";
+    for(let r=0;r<ROOM_COUNT;r++) html += `<th>第${r+1}教室</th>`;
+    html += "</tr>";
+    for(let slot=0; slot<SLOT_LABELS.length; slot++){
+      html += `<tr><td class="slot-label">${SLOT_LABELS[slot]}</td>`;
+      for(let r=0;r<ROOM_COUNT;r++){
+        const cell = grid[slot][r];
+        if(cell && cell.type==="pending"){
+          const meta = cell.originalType==="group" ? `<span class="cell-meta">Lv.${cell.level}・${cell.schoolCat==="D"?"D校":"A/B/C校"}</span>` : "";
+          const buttons = cell.candidates.map(name=>
+            `<button class="btn small pending-choice" onclick="resolveTeacherChoice('${jsAttr(day)}',${slot},${r},'${jsAttr(name)}')">${escapeHtml(name)}</button>`
+          ).join("");
+          html += `<td class="pending">
+            <span class="pending-label">先生を選択：${escapeHtml(cell.subject)}</span>
+            <span class="cell-student">${cell.students.map(escapeHtml).join("・")}</span>
+            ${meta}
+            <div class="pending-choices">${buttons}</div>
+          </td>`;
+        }else if(cell){
+          const meta = cell.type==="group" ? `<span class="cell-meta">Lv.${cell.level}・${cell.schoolCat==="D"?"D校":"A/B/C校"}</span>` : "";
+          const badge = cell.type==="group" ? `<span class="cell-badge">集団 ${cell.students.length}名</span>` : "";
+          html += `<td class="filled ${cell.type}">
+            <span class="cell-student">${cell.students.map(escapeHtml).join("・")}</span>
+            <span class="cell-teacher">${escapeHtml(cell.teacher)}・${escapeHtml(cell.subject)}</span>
+            ${meta}${badge}
+          </td>`;
+        }else{
+          html += "<td></td>";
+        }
+      }
+      html += "</tr>";
+    }
+    html += "</table></div></div>";
+  });
+  container.innerHTML = html;
+
+  const adjustEl = document.getElementById("adjustSlot");
+  if(unadjusted.length===0){
+    adjustEl.innerHTML = `<div id="adjustOk">全ての生徒を配置できました。調整が必要な生徒はいません。</div>`;
+  }else{
+    let list = "<ul>";
+    unadjusted.forEach(u=>{
+      list += `<li><b>${escapeHtml(u.name)}</b>（${u.day}曜日 ${u.slotLabel}）：${escapeHtml(u.reason)}</li>`;
+    });
+    list += "</ul>";
+    adjustEl.innerHTML = `<div id="adjustBox"><h3>※調整が必要な生徒</h3>${list}</div>`;
+  }
+
+  document.getElementById("resultSection").style.display = "block";
+  window._lastResult = {usedDays, allGrids, unadjusted, SLOT_LABELS, mode: currentMode};
+  document.getElementById("resultSection").scrollIntoView({behavior:"smooth"});
+}
+
+// escapes a value for safe embedding inside a single-quoted inline JS string in an onclick attribute
+function jsAttr(s){
+  return String(s).replace(/\\/g,"\\\\").replace(/'/g,"\\'");
+}
+
+// called when the person clicks one of the candidate-teacher buttons on a pending (orange) cell
+function resolveTeacherChoice(day, slot, room, teacherName){
+  const result = window._lastResult;
+  if(!result) return;
+  const cell = result.allGrids[day][slot][room];
+  if(!cell || cell.type!=="pending") return;
+  cell.teacher = teacherName;
+  cell.type = cell.originalType;
+  delete cell.originalType;
+  delete cell.candidates;
+  renderResult(result.usedDays, result.allGrids, result.unadjusted, result.SLOT_LABELS);
+}
+
+function downloadCSV(){
+  const result = window._lastResult;
+  if(!result){ alert("先に時間割を作成してください。"); return; }
+  const SLOT_LABELS = result.SLOT_LABELS;
+  let rows = [["曜日","時間帯", ...Array.from({length:ROOM_COUNT},(_,i)=>"第"+(i+1)+"教室")]];
+  result.usedDays.forEach(day=>{
+    const grid = result.allGrids[day];
+    for(let slot=0; slot<SLOT_LABELS.length; slot++){
+      const row = [day+"曜日", SLOT_LABELS[slot]];
+      for(let r=0;r<ROOM_COUNT;r++){
+        const cell = grid[slot][r];
+        if(!cell){ row.push(""); continue; }
+        if(cell.type==="pending"){
+          row.push(`${cell.students.join("・")}(要選択:候補=${cell.candidates.join("/")}/${cell.subject})`);
+          continue;
+        }
+        const extra = cell.type==="group" ? `/集団/Lv.${cell.level}/${cell.schoolCat==="D"?"D校":"ABC校"}` : "/個別";
+        row.push(`${cell.students.join("・")}(${cell.teacher}/${cell.subject}${extra})`);
+      }
+      rows.push(row);
+    }
+  });
+  const csv = rows.map(r=>r.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(",")).join("\n");
+  const blob = new Blob(["\ufeff"+csv], {type:"text/csv;charset=utf-8;"});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `timetable_${result.mode}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function resetAll(){
+  people = [];
+  document.getElementById("dataFile").value = "";
+  document.getElementById("peopleSearch").value = "";
+  cancelEdit();
+  renderPeopleTable();
+  document.getElementById("resultSection").style.display = "none";
+}
+
+// init
+setMode("intensive");
+</script>
+
+</body>
+</html>
